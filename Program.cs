@@ -9,11 +9,18 @@ namespace Cod4PackagedBuilder
     internal class Program
     {
         private static string _workDir = string.Empty;
-        private static BuildMode _buildMode;
-        private static BuildLang _buildLang;
-
+        private static string _toolsDir = string.Empty;
+        
+        private static string _toolsRawDir = string.Empty;
+        private static string _toolsZoneDir = string.Empty;
+        private static string _toolsZoneSourceDir = string.Empty;
+        private static string _toolsBinDir = string.Empty;
+        
         private static string _baseDir = string.Empty;
         private static string _releaseDir = string.Empty;
+
+        private static BuildMode _buildMode;
+        private static BuildLang _buildLang;
 
         private const string BaseIwdName = "z_ow_main";
 
@@ -31,15 +38,30 @@ namespace Cod4PackagedBuilder
         public static void Main(string[] args)
         {
             _workDir = Environment.CurrentDirectory;
-
+            _toolsDir = Path.Combine(_workDir, "..", "..");
+            
             for (var i = 0; i < args.Length; i++)
             {
-                if (i < args.Length - 1 && args[i] == "-workdir")
+                if (i < args.Length - 1)
                 {
-                    _workDir = args[i + 1];
+                    var argValue = args[i + 1];
+                    
+                    switch (args[i].ToLower())
+                    {
+                        case "-workdir": _workDir = argValue; break;
+                        case "-toolsdir": _toolsDir = argValue; break;
+                    }
                 }
             }
 
+            _baseDir = Path.Combine(_workDir, "_Base");
+            _releaseDir = Path.Combine(_workDir, "_Release");
+            
+            _toolsRawDir = Path.Combine(_toolsDir, "raw");
+            _toolsZoneDir = Path.Combine(_toolsDir, "zone");
+            _toolsZoneSourceDir = Path.Combine(_toolsDir, "zone_source");
+            _toolsBinDir = Path.Combine(_toolsDir, "bin");
+            
             Console.WriteLine($"Starting in workdir: {_workDir}");
 
             if (!Directory.Exists(_workDir))
@@ -161,9 +183,6 @@ namespace Cod4PackagedBuilder
 
         private static void Build()
         {
-            _baseDir = Path.Combine(_workDir, "_Base");
-            _releaseDir = Path.Combine(_workDir, "_Release");
-
             if (!Directory.Exists(_baseDir))
             {
                 Environment.Exit(2);
@@ -221,23 +240,22 @@ namespace Cod4PackagedBuilder
         private static void BuildFastFile(string packDir)
         {
             var assetsListFileSourcePath = Path.Combine(packDir, "mod.csv");
-            var assetsListFileTargetPath = Path.Combine(_workDir, "..", "..", "zone_source", "mod.csv");
-            File.Copy(assetsListFileSourcePath, assetsListFileTargetPath, true);
+            var assetsListFileTargetPath = Path.Combine(_toolsZoneSourceDir, "mod.csv");
             Console.WriteLine($"Copying {assetsListFileSourcePath} > {assetsListFileTargetPath}");
+            File.Copy(assetsListFileSourcePath, assetsListFileTargetPath, true);
 
             var ignoredAssetsListFileSourcePath = Path.Combine(packDir, "mod_ignore.csv");
-            var ignoredAssetsListFileTargetPath = Path.Combine(_workDir, "..", "..", "zone_source",
-                _buildLang.ToString(), "assetlist", "mod_ignore.csv");
-            File.Copy(ignoredAssetsListFileSourcePath, ignoredAssetsListFileTargetPath, true);
+            var ignoredAssetsListFileTargetPath = Path.Combine(_toolsZoneSourceDir, _buildLang.ToString(), "assetlist", "mod_ignore.csv");
             Console.WriteLine($"Copying {ignoredAssetsListFileSourcePath} > {ignoredAssetsListFileTargetPath}");
+            File.Copy(ignoredAssetsListFileSourcePath, ignoredAssetsListFileTargetPath, true);
 
             
             Console.WriteLine("Starting linker...");
                 
             var linker = new Process();
-            linker.StartInfo.FileName = Path.Combine(_workDir, "..", "..", "bin", "linker_pc.exe");
+            linker.StartInfo.FileName = Path.Combine(_toolsBinDir, "linker_pc.exe");
             linker.StartInfo.Arguments = $"-language {_buildLang} -compress -cleanup mod"; // optional
-            linker.StartInfo.WorkingDirectory = Path.Combine(_workDir, "..", "..", "bin");
+            linker.StartInfo.WorkingDirectory = Path.Combine(_toolsBinDir);
             linker.StartInfo.UseShellExecute = false;
             linker.StartInfo.RedirectStandardOutput = true; // optional, if you want to read output
             linker.Start();
@@ -257,7 +275,7 @@ namespace Cod4PackagedBuilder
 
             Console.WriteLine("Linker finished successfully.");
 
-            File.Copy(Path.Combine(_workDir, "..", "..", "zone", _buildLang.ToString(), "mod.ff"), Path.Combine(_releaseDir, "mod.ff"), true);
+            File.Copy(Path.Combine(_toolsZoneDir, _buildLang.ToString(), "mod.ff"), Path.Combine(_releaseDir, "mod.ff"), true);
 
             Console.WriteLine("FastFile builded successfully.");
         }
@@ -334,7 +352,7 @@ namespace Cod4PackagedBuilder
                 assetsTargetDir = assetsSourceDir;
             }
 
-            CopyDir.Copy(assetsPath, Path.Combine(packDir, "..", "..", "raw", assetsTargetDir));
+            CopyDir.Copy(assetsPath, Path.Combine(_toolsRawDir, assetsTargetDir));
         }
     }
 
