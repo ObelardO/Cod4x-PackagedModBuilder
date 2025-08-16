@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO;
 using System.IO.Compression;
+using Microsoft.VisualBasic;
 
 namespace Cod4PackagedBuilder
 {
@@ -23,16 +24,21 @@ namespace Cod4PackagedBuilder
         private static BuildLang _buildLang;
 
         private const string BaseIwdName = "z_ow_main";
+        private const string BaseSoundsIwdName = "z_ow_sounds";
 
         private static readonly (string subDir, string filePattern)[] BaseAssets =
         {
             ("images", "*.iwi"),
             ("weapons/mp", "*_mp"),
             ("", "mod.arena"),
-            ("sound", "*.mp3"),
-            ("sound", "*.wav"),
             ("rulesets/openwarfare", "*.gsc"),
             ("rulesets", "leagues.gsc")
+        };
+        
+        private static readonly (string subDir, string filePattern)[] BaseSoundsAssets =
+        {
+            ("sound", "*.mp3"),
+            ("sound", "*.wav"),
         };
 
         public static void Main(string[] args)
@@ -61,27 +67,28 @@ namespace Cod4PackagedBuilder
             _toolsZoneDir = Path.Combine(_toolsDir, "zone");
             _toolsZoneSourceDir = Path.Combine(_toolsDir, "zone_source");
             _toolsBinDir = Path.Combine(_toolsDir, "bin");
-            
-            Console.WriteLine($"Starting in workdir: {_workDir}");
+
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("--------------------------------------------------------------------------------");
+            Console.WriteLine($" Starting in workdir: {_workDir}");
 
             if (!Directory.Exists(_workDir))
             {
-                Environment.Exit(1);
+                Shutdown(BuildResult.WorkDirNotFound);
                 return;
             }
-
-
 
             SelectMode();
 
             Console.ReadLine();
 
-            Environment.Exit(0);
+            Shutdown(BuildResult.Successful);
+            return;
         }
 
         private static void SelectMode()
         {
-            Console.WriteLine("_________________________________________________________________");
+            Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine(" Please select build mode:");
             Console.WriteLine("\t1. All (base and packages .iwd and .ff files)");
             Console.WriteLine("\t2. Base only (base .iwd and .ff files)");
@@ -90,7 +97,7 @@ namespace Cod4PackagedBuilder
             Console.WriteLine("\t5. Packages only (packages .iwd and .ff files)");
             Console.WriteLine("\t6. Packages IWD (packages .iwd files)");
             Console.WriteLine("\t7. Packages FF (packages .ff file)");
-            Console.WriteLine("");
+            Console.Write("\n");
             Console.WriteLine("\t0. Exit");
 
             var buildModeInput = Console.ReadLine();
@@ -111,8 +118,7 @@ namespace Cod4PackagedBuilder
 
                 _buildMode = (BuildMode)buildModeInt;
 
-                Console.WriteLine($" Selected mode: {buildModeInt}");
-                Console.WriteLine("\n");
+                Console.WriteLine($" Selected mode: {buildModeInt}\n");
 
                 SelectLang();
             }
@@ -123,16 +129,15 @@ namespace Cod4PackagedBuilder
 
             void InvalidInput()
             {
-                Console.WriteLine(" Please enter valid value.");
-                Console.WriteLine("\n");
-
+                Console.WriteLine(" Please enter valid value.\n");
+                
                 SelectMode();
             }
         }
 
         private static void SelectLang()
         {
-            Console.WriteLine("_________________________________________________________________");
+            Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine(" Please choose the language you would like to compile:");
             Console.WriteLine("\t1. English");
             Console.WriteLine("\t2. French");
@@ -141,30 +146,27 @@ namespace Cod4PackagedBuilder
             Console.WriteLine("\t5. Portuguese");
             Console.WriteLine("\t6. Russian");
             Console.WriteLine("\t7. Spanish");
-            Console.WriteLine("");
+            Console.Write("\n");
             Console.WriteLine("\t0. Back");
 
             var buildLangInput = Console.ReadLine();
 
             if (int.TryParse(buildLangInput, out var buildLangInt))
             {
-                if (buildLangInt < 0 || buildLangInt >= (int)BuildLang.Length)
+                switch (buildLangInt)
                 {
-                    InvalidInput();
-                    return;
-                }
-
-                if (buildLangInt == 0)
-                {
-                    SelectMode();
-                    return;
+                    case < 0 or >= (int)BuildLang.Length:
+                        InvalidInput();
+                        return;
+                    case 0:
+                        SelectMode();
+                        return;
                 }
 
                 _buildLang = (BuildLang)buildLangInt;
 
-                Console.WriteLine($" Selected language: {_buildLang.ToString()}");
-                Console.WriteLine("\n");
-
+                Console.WriteLine($" Selected language: {_buildLang.ToString()}\n");
+                
                 Build();
             }
             else
@@ -174,9 +176,8 @@ namespace Cod4PackagedBuilder
 
             void InvalidInput()
             {
-                Console.WriteLine(" Please enter valid value.");
-                Console.WriteLine("\n");
-
+                Console.WriteLine(" Please enter valid value.\n");
+                
                 SelectLang();
             }
         }
@@ -185,7 +186,7 @@ namespace Cod4PackagedBuilder
         {
             if (!Directory.Exists(_baseDir))
             {
-                Environment.Exit(2);
+                Shutdown(BuildResult.BaseDirNotFound);
                 return;
             }
 
@@ -193,12 +194,16 @@ namespace Cod4PackagedBuilder
             {
                 Directory.CreateDirectory(_releaseDir);
             }
+            
+            Console.WriteLine("--------------------------------------------------------------------------------");
+            Console.WriteLine(" Building mod...");
 
             switch (_buildMode)
             {
                 case BuildMode.All:
 
                     BuildIwd(_baseDir, BaseIwdName, BaseAssets);
+                    BuildIwd(_baseDir, BaseSoundsIwdName, BaseSoundsAssets);
 
                     PrepareFastFile(_baseDir);
 
@@ -214,15 +219,20 @@ namespace Cod4PackagedBuilder
 
                     break;
             }
+            
+            Console.WriteLine(" Mod built successfully.");
+            Shutdown(BuildResult.Successful);
         }
 
         private static void BuildIwd(string dir, string iwdName, (string subDir, string filePattern)[] assets)
         {
+            Console.WriteLine($" Building {iwdName}.iwd...");
+            
             var iwdPath = Path.Combine(_releaseDir, $"{iwdName}.iwd");
 
             if (!Directory.Exists(dir))
             {
-                Environment.Exit(3);
+                Shutdown(BuildResult.IwdSourceDirNotFound);
                 return;
             }
 
@@ -235,22 +245,18 @@ namespace Cod4PackagedBuilder
             {
                 AddFilesToIwd(iwdPath, dir, subDir, filePattern);
             }
+            
+            Console.WriteLine($" {iwdName}.iwd packed successfully.");
         }
 
         private static void BuildFastFile(string packDir)
         {
-            var assetsListFileSourcePath = Path.Combine(packDir, "mod.csv");
-            var assetsListFileTargetPath = Path.Combine(_toolsZoneSourceDir, "mod.csv");
-            Console.WriteLine($"Copying {assetsListFileSourcePath} > {assetsListFileTargetPath}");
-            File.Copy(assetsListFileSourcePath, assetsListFileTargetPath, true);
-
-            var ignoredAssetsListFileSourcePath = Path.Combine(packDir, "mod_ignore.csv");
-            var ignoredAssetsListFileTargetPath = Path.Combine(_toolsZoneSourceDir, _buildLang.ToString(), "assetlist", "mod_ignore.csv");
-            Console.WriteLine($"Copying {ignoredAssetsListFileSourcePath} > {ignoredAssetsListFileTargetPath}");
-            File.Copy(ignoredAssetsListFileSourcePath, ignoredAssetsListFileTargetPath, true);
-
+            Console.WriteLine($" Building mod.ff...");
             
-            Console.WriteLine("Starting linker...");
+            CopyDir.CopyDirectoryFlat(packDir, _toolsZoneSourceDir, "mod.csv", true);
+            CopyDir.CopyDirectoryFlat(packDir, Path.Combine(_toolsZoneSourceDir, _buildLang.ToString(), "assetlist"),  "mod_ignore.csv", true);
+
+            Console.WriteLine(" Starting linker...");
                 
             var linker = new Process();
             linker.StartInfo.FileName = Path.Combine(_toolsBinDir, "linker_pc.exe");
@@ -263,21 +269,22 @@ namespace Cod4PackagedBuilder
             string output = linker.StandardOutput.ReadToEnd(); // optional
             linker.WaitForExit(); // Waits for the process to finish
 
-            Console.WriteLine(output);
+            Console.Write($" {output}");
             
             int exitCode = linker.ExitCode;
 
             if (exitCode != 0)
             {
-                Console.WriteLine($"Linker failed with exit code {exitCode}");
+                Console.WriteLine($" Linker failed with exit code {exitCode}.");
+                Shutdown(BuildResult.LinkerFailed);
                 return;
             }
 
-            Console.WriteLine("Linker finished successfully.");
+            Console.WriteLine(" Linker finished successfully.");
 
             File.Copy(Path.Combine(_toolsZoneDir, _buildLang.ToString(), "mod.ff"), Path.Combine(_releaseDir, "mod.ff"), true);
 
-            Console.WriteLine("FastFile builded successfully.");
+            Console.WriteLine(" FastFile built successfully.");
         }
 
         public static void AddFilesToIwd(string iwdPath, string packDir, string sourceDir, string searchPattern)
@@ -293,16 +300,21 @@ namespace Cod4PackagedBuilder
             {
                 using (var zip = ZipFile.Open(iwdPath, ZipArchiveMode.Create)) { }
             }
-
+            
+            var sourceDirName = ".";
+                
+            if (!string.IsNullOrEmpty(sourceDir)) sourceDirName = new DirectoryInfo(sourceDir).Name;
+            
             using var archive = ZipFile.Open(iwdPath, ZipArchiveMode.Update);
 
             var files = Directory.GetFiles(filesDir, searchPattern, SearchOption.AllDirectories);
 
-            foreach (var file in files)
+            for (var i = 0; i < files.Length; i++)
             {
+                var file = files[i];
                 // Path in archive
-                string relativePath = Path.GetRelativePath(filesDir, file);
-                string entryName = Path.Combine(sourceDir, relativePath).Replace("\\", "/");
+                var relativePath = Path.GetRelativePath(filesDir, file);
+                var entryName = Path.Combine(sourceDir, relativePath).Replace("\\", "/");
 
                 // Remove existed file
                 var existing = archive.GetEntry(entryName);
@@ -311,8 +323,14 @@ namespace Cod4PackagedBuilder
                 // Add new file
                 archive.CreateEntryFromFile(file, entryName, CompressionLevel.Optimal);
 
-                Console.WriteLine($"[OK] Packing {file} > {entryName}");
+                Console.SetCursorPosition(0, Console.CursorTop);
+                Console.Write($" Packing ({i+1} / {files.Length}) from \"\\{sourceDirName}\"...");
+
+                //Thread.Sleep(1);
             }
+            
+            Console.SetCursorPosition(0, Console.CursorTop);
+            Console.WriteLine($" Packed ({files.Length}) files to \"\\{sourceDirName}\".    ");
         }
 
         private static void PrepareFastFile(string packDir)
@@ -334,8 +352,6 @@ namespace Cod4PackagedBuilder
             CopyDirToRaw(packDir, Path.Combine("locals", _buildLang.ToString(), _buildLang.ToString()));  
 
             CopyDirToRaw(packDir, "openwarfare");
-
-
         }
 
         private static void CopyDirToRaw(string packDir, string assetsSourceDir, string assetsTargetDir = "")
@@ -352,7 +368,14 @@ namespace Cod4PackagedBuilder
                 assetsTargetDir = assetsSourceDir;
             }
 
-            CopyDir.Copy(assetsPath, Path.Combine(_toolsRawDir, assetsTargetDir));
+            CopyDir.CopyDirectoryFlat(assetsPath, Path.Combine(_toolsRawDir, assetsTargetDir), "*", true);
+        }
+        
+        private static void Shutdown(BuildResult result)
+        {
+            Console.WriteLine("--------------------------------------------------------------------------------");
+            Console.WriteLine($" Building finished with result: \"{result.ToString()}\".");
+            Environment.Exit((int)result);
         }
     }
 
@@ -360,16 +383,42 @@ namespace Cod4PackagedBuilder
 
     class CopyDir
     {
-        public static void Copy(string sourceDirectory, string targetDirectory)
+        public static void CopyDirectoryFlat(string sourceDir, string targetDir, string searchPattern, bool overwrite)
         {
-            DirectoryInfo diSource = new DirectoryInfo(sourceDirectory);
-            DirectoryInfo diTarget = new DirectoryInfo(targetDirectory);
+            // Получаем все файлы сразу, включая вложенные
+            var files = Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
+            
+            var sourceDirName = new DirectoryInfo(sourceDir).Name;
+            var targetDirName = new DirectoryInfo(targetDir).Name;
+            
+            for (var i = 0; i < files.Length; i++)
+            {
+                var file = files[i];
+                // Получаем относительный путь относительно корневой папки
+                var relativePath = Path.GetRelativePath(sourceDir, file);
+                
+                // Строим путь в папке назначения
+                var targetPath = Path.Combine(targetDir, relativePath);
 
-            CopyAll(diSource, diTarget);
+                // Создаём подкаталоги, если нужно
+                Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+
+                Console.SetCursorPosition(0, Console.CursorTop);
+                Console.Write($" Copying ({i+1} / {files.Length}) from \"\\{sourceDirName}\"...");
+                
+                // Копируем файл
+                File.Copy(file, targetPath, overwrite);
+            }
+            
+            Console.SetCursorPosition(0, Console.CursorTop);
+            Console.WriteLine($" Copied ({files.Length}) files to \"\\{targetDirName}\".        ");
         }
-
+        
         public static void CopyAll(DirectoryInfo source, DirectoryInfo target)
         {
+            
+            
+            
             Directory.CreateDirectory(target.FullName);
 
             // Copy each file into the new directory.
@@ -421,5 +470,15 @@ namespace Cod4PackagedBuilder
         Spanish = 7,
         
         Length = 8
+    }
+
+    public enum BuildResult
+    {
+        Successful = 0,
+        WorkDirNotFound = 1,
+        BaseDirNotFound = 2,
+        ToolsDirNotFound = 3,
+        IwdSourceDirNotFound = 4,
+        LinkerFailed = 5
     }
 }
