@@ -1,10 +1,6 @@
-﻿using System;
-using System.Diagnostics;
-using System.IO;
-using System.IO;
+﻿using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
-using Microsoft.VisualBasic;
 
 namespace Cod4PackagedBuilder
 {
@@ -24,12 +20,17 @@ namespace Cod4PackagedBuilder
 
         private static BuildMode _buildMode = BuildMode.All;
         private static BuildLang _buildLang = BuildLang.English;
+        private static bool _useScriptsPacking = true;
 
         private const string BaseIwdName = "main";
         private const string BaseSoundsIwdName = "sounds";
 
         private static string _assetsListFileName = "mod.csv";
+        private static string _assetsListFilePath = string.Empty;
+        
         private static string _ignoredAssetsListFileName = "mod_ignore.csv";
+        private static string _ignoredAssetsListFilePath = string.Empty;
+        
         
         private static readonly (string subDir, string filePattern)[] BaseAssets =
         {
@@ -57,6 +58,8 @@ namespace Cod4PackagedBuilder
             ("sound", "*.wav"),
         };
 
+        private static readonly string[] ScriptAssetsTypes = {"gsc", "gsx"};
+
         public static void Main(string[] args)
         {
             _workDir = Environment.CurrentDirectory;
@@ -72,6 +75,7 @@ namespace Cod4PackagedBuilder
                     {
                         case "-workdir": _workDir = argValue; break;
                         case "-toolsdir": _toolsDir = argValue; break;
+                        case "-packgsc": bool.TryParse(argValue, out _useScriptsPacking); break;
                     }
                 }
             }
@@ -86,8 +90,11 @@ namespace Cod4PackagedBuilder
             
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("--------------------------------------------------------------------------------");
-            Console.WriteLine($" Starting in workdir: {_workDir}");
-
+            Console.WriteLine($" Starting...");
+            Console.WriteLine($" Working directory: {_workDir}");
+            Console.WriteLine($" ModTools directory: {_toolsDir}");
+            Console.WriteLine($" Use scripts packing: {_useScriptsPacking}");
+            
             if (!Directory.Exists(_workDir))
             {
                 Shutdown(BuildResult.WorkDirNotFound);
@@ -185,7 +192,10 @@ namespace Cod4PackagedBuilder
                 }
 
                 _buildLang = (BuildLang)buildLangInt;
+                
                 _toolsZoneSourceAssetsDir = Path.Combine(_toolsZoneSourceDir, _buildLang.ToString(), "assetlist");
+                _assetsListFilePath = Path.Combine(_toolsZoneSourceDir, _assetsListFileName);
+                _ignoredAssetsListFilePath = Path.Combine(_toolsZoneSourceAssetsDir, _ignoredAssetsListFileName);
                 
                 Console.WriteLine($" Selected language: {_buildLang.ToString()}\n");
                 
@@ -220,9 +230,22 @@ namespace Cod4PackagedBuilder
             Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine(" Building mod...");
 
-            File.Delete(Path.Combine(_toolsZoneSourceDir, _assetsListFileName));
-            File.Delete(Path.Combine(_toolsZoneSourceAssetsDir, _ignoredAssetsListFileName));
+            if (File.Exists(_assetsListFilePath))
+            {
+                File.Delete(_assetsListFilePath);
+            }
             
+            if (File.Exists(_ignoredAssetsListFilePath))
+            {
+                File.Delete(_ignoredAssetsListFilePath);
+            }
+            
+            if (Directory.Exists(_releaseDir))
+            {
+                Directory.Delete(_releaseDir,true);  
+                Directory.CreateDirectory(_releaseDir);
+            }
+
             switch (_buildMode)
             {
                 case BuildMode.All:
@@ -237,7 +260,7 @@ namespace Cod4PackagedBuilder
                     PreparePackagesFastFile();
                     
                     BuildFastFile(_baseDir);
-
+                    
                     break;
                 
                 case BuildMode.BaseOnly:
@@ -313,17 +336,20 @@ namespace Cod4PackagedBuilder
         {
             Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine(" Building mod.ff...");
-            //Console.WriteLine(" Starting linker...");
-                
+
+            //ExcludeScriptAssets();
+            
+            Console.WriteLine(" Starting linker...");
+            
             var linker = new Process();
             linker.StartInfo.FileName = Path.Combine(_toolsBinDir, "linker_pc.exe");
-            linker.StartInfo.Arguments = $"-language {_buildLang} -compress -cleanup mod"; // optional
+            linker.StartInfo.Arguments = $"-language {_buildLang} -compress -cleanup mod";
             linker.StartInfo.WorkingDirectory = Path.Combine(_toolsBinDir);
             linker.StartInfo.UseShellExecute = false;
-            linker.StartInfo.RedirectStandardOutput = true; // optional, if you want to read output
+            linker.StartInfo.RedirectStandardOutput = true; 
             linker.Start();
 
-            string output = linker.StandardOutput.ReadToEnd(); // optional
+            string output = linker.StandardOutput.ReadToEnd();
             linker.WaitForExit(); // Waits for the process to finish
 
             Console.Write($" {output}");
@@ -343,7 +369,7 @@ namespace Cod4PackagedBuilder
 
             Console.WriteLine(" FastFile built successfully.");
         }
-
+        
         public static void AddFilesToIwd(string iwdPath, string packDir, string sourceDir, string searchPattern)
         {
             var filesDir = Path.Combine(packDir, sourceDir);
@@ -387,41 +413,80 @@ namespace Cod4PackagedBuilder
             }
             
             Console.SetCursorPosition(0, Console.CursorTop);
-            //Console.Write(new string(' ', Console.WindowWidth));
-            //Console.SetCursorPosition(0, Console.CursorTop);
+            Console.Write(new string(' ', 80));
+            Console.SetCursorPosition(0, Console.CursorTop);
             Console.WriteLine($" Packed ({files.Length}) files to \"\\{sourceDirName}\".");
         }
 
-        private static void PrepareFastFile(string packDir, string packName)
+        private static void PrepareFastFile(string packDir, string packName, bool usePackScriptsPacking = true)
         {
             Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine($" Move \"{packName}\" assets ...");
             
-            CopyDirToRaw(packDir, "maps");
-            CopyDirToRaw(packDir, "mp");
-            CopyDirToRaw(packDir, "shock");
-            CopyDirToRaw(packDir, "sound");
-            CopyDirToRaw(packDir, "soundaliases");
-            CopyDirToRaw(packDir, "ui_mp");
-            CopyDirToRaw(packDir, "xmodel");
-            CopyDirToRaw(packDir, "xmodelparts");
-            CopyDirToRaw(packDir, "xmodelsurfs");
-            CopyDirToRaw(packDir, "fx");
-            CopyDirToRaw(packDir, "materials");
-            CopyDirToRaw(packDir, "vision");
-            CopyDirToRaw(packDir, "xanim");
-
-            CopyDirToRaw(packDir, Path.Combine("locals", _buildLang.ToString(), _buildLang.ToString()));  
-
-            CopyDirToRaw(packDir, "openwarfare");
+            var useScriptsPacking = _useScriptsPacking && usePackScriptsPacking;
+            var scriptsTargetDir = useScriptsPacking ? _toolsRawDir : _releaseDir;
             
-            CopyDir.CopyDirectoryFlat(packDir, _toolsZoneSourceDir, _assetsListFileName, CopyDir.CopyMode.Merging);
-            CopyDir.CopyDirectoryFlat(packDir, _toolsZoneSourceAssetsDir,  _ignoredAssetsListFileName, CopyDir.CopyMode.Merging);
+            Console.WriteLine($" Scripts packing is \"{useScriptsPacking}\"");
+            
+            // Move assets
+            CopyAssets(packDir, "shock", _toolsRawDir);
+            CopyAssets(packDir, "sound", _toolsRawDir);
+            CopyAssets(packDir, "soundaliases", _toolsRawDir);
+            CopyAssets(packDir, "ui_mp", _toolsRawDir);
+            CopyAssets(packDir, "xmodel", _toolsRawDir);
+            CopyAssets(packDir, "xmodelparts", _toolsRawDir);
+            CopyAssets(packDir, "xmodelsurfs", _toolsRawDir);
+            CopyAssets(packDir, "fx", _toolsRawDir);
+            CopyAssets(packDir, "materials", _toolsRawDir);
+            CopyAssets(packDir, "vision", _toolsRawDir);
+            CopyAssets(packDir, "xanim", _toolsRawDir);
+            CopyAssets(packDir, "mp", _toolsRawDir);
+            
+            // Move scripts data directly to release directory
+            CopyAssets(packDir, "scriptdata", _releaseDir);
+            CopyAssets(packDir, Path.Combine("locals", _buildLang.ToString(), _buildLang.ToString()), _toolsRawDir);
+            
+            // Move scripts (directly to release if scripts packing disabled)
+            CopyAssets(packDir, "maps", scriptsTargetDir);
+            CopyAssets(packDir, "openwarfare", scriptsTargetDir);
+            CopyAssets(packDir, "scripts", scriptsTargetDir);
+
+            // Scripts assets list validator method
+            Func<string[], string[]> scriptAssetsValidator = useScriptsPacking
+                // return source list if script packing enabled
+                ? assetsList => assetsList
+                // or return list without scripts 
+                : assetsList => AssetsListValidator(assetsList, ScriptAssetsTypes);
+ 
+            // Copy assets list with merging (all packages and base combined) and validation (skip scripts if needed) 
+            CopyDir.CopyDirectoryFlat(packDir, _toolsZoneSourceDir, _assetsListFileName, CopyDir.CopyMode.Merging, scriptAssetsValidator);
+            CopyDir.CopyDirectoryFlat(packDir, _toolsZoneSourceAssetsDir,  _ignoredAssetsListFileName, CopyDir.CopyMode.Merging, scriptAssetsValidator);
             
             Console.WriteLine(" Assets moved successfully.");
         }
 
-        private static void CopyDirToRaw(string packDir, string assetsSourceDir, string assetsTargetDir = "")
+        private static string[] AssetsListValidator(string[] assetsList, string[] excludedAssetsTypes)
+        {
+            var validAssetsList = assetsList.ToArray();
+            var validAssetsCount = validAssetsList.Length;
+            
+            foreach (var excludedType in excludedAssetsTypes)
+            {
+                validAssetsList = validAssetsList.Where(a => !a.TrimEnd(' ').ToLower().EndsWith(excludedType)).ToArray();
+            }
+            
+            var skippedAssetsCount = validAssetsCount - validAssetsList.Length;
+
+            if (skippedAssetsCount > 0)
+            {
+                Console.SetCursorPosition(50, Console.CursorTop);
+                Console.Write($"Skipped ({skippedAssetsCount}) assets.");
+            }
+
+            return validAssetsList;
+        }
+
+        private static void CopyAssets(string packDir, string assetsSourceDir, string targetDir, string assetsTargetDir = "")
         {
             var assetsPath = Path.Combine(packDir, assetsSourceDir);
 
@@ -435,9 +500,10 @@ namespace Cod4PackagedBuilder
                 assetsTargetDir = assetsSourceDir;
             }
 
-            CopyDir.CopyDirectoryFlat(assetsPath, Path.Combine(_toolsRawDir, assetsTargetDir), "*");
+            CopyDir.CopyDirectoryFlat(assetsPath, Path.Combine(targetDir, assetsTargetDir), "*");
         }
-
+        
+        
         private static void Shutdown(BuildResult result, string description = "")
         {
             Console.WriteLine("--------------------------------------------------------------------------------");
@@ -447,18 +513,17 @@ namespace Cod4PackagedBuilder
 
         #region Packages
 
-        private static string _packagesConfigName = "packages.txt";
+        private const string PackagesConfigName = "packages.txt";
+        private const string PackagesInitScriptName = "_packagesinit.gsc";
         
         private static PackManifest[] _packagesList = Array.Empty<PackManifest>();
-
-        private static string _packagesInitScriptName = "_packagesinit.gsc";
         
         public static void LoadPackages()
         {
             Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine($" Loading packages...");
 
-            var packListFile = Path.Combine(_workDir, _packagesConfigName);
+            var packListFile = Path.Combine(_workDir, PackagesConfigName);
 
             if (!File.Exists(packListFile))
             {
@@ -493,7 +558,11 @@ namespace Cod4PackagedBuilder
 
                 var packConfig = File.ReadAllLines(packConfigFile);
 
-                var packManifest = new PackManifest {PackDir = packDir};
+                var packManifest = new PackManifest
+                {
+                    PackDir = packDir,
+                    UseScriptsPacking = true
+                };
 
                 if (!TryGetPackConfigValue(packConfig, "name", out packManifest.PackName) ||
                     !TryGetPackConfigValue(packConfig, "iwd", out packManifest.IwdName) ||
@@ -501,6 +570,11 @@ namespace Cod4PackagedBuilder
                 {
                     Shutdown(BuildResult.PackageConfigWrongFormat);
                     return;
+                }
+
+                if (TryGetPackConfigValue(packConfig, "packgsc", out var useScriptsPackingValue))
+                {
+                    bool.TryParse(useScriptsPackingValue, out packManifest.UseScriptsPacking);
                 }
                 
                 loadedPackagesList.Add(packManifest);
@@ -518,16 +592,16 @@ namespace Cod4PackagedBuilder
             Console.WriteLine("--------------------------------------------------------------------------------");
             Console.WriteLine($" Init packages code generation...");
             
-            var initScriptPath = Path.Combine(_baseDir, "openwarfare", _packagesInitScriptName);
+            var initScriptPath = Path.Combine(_baseDir, "openwarfare", PackagesInitScriptName);
             var initScriptBuilder = new StringBuilder();
 
             initScriptBuilder.Append("//_packagesinit generated. Do not touch!!\n");
             initScriptBuilder.Append("init()\n");
             initScriptBuilder.Append("{\n");
 
-            foreach (var packManifest in _packagesList)
+            foreach (var packManifest in _packagesList.Where(pack => !string.IsNullOrEmpty(pack.ScriptName)))
             {
-                initScriptBuilder.Append($"\tthread openwarfare\\{packManifest.ScriptName}::init();\n");
+                initScriptBuilder.Append($"\tthread scripts\\{packManifest.ScriptName}::init();\n");
             }
 
             initScriptBuilder.Append("}\n");
@@ -570,7 +644,7 @@ namespace Cod4PackagedBuilder
         {
             foreach (var packManifest in _packagesList)
             {
-                PrepareFastFile(packManifest.PackDir, packManifest.PackName);
+                PrepareFastFile(packManifest.PackDir, packManifest.PackName, packManifest.UseScriptsPacking);
             }
         }
 
@@ -586,7 +660,7 @@ namespace Cod4PackagedBuilder
             Merging = 3
         }
         
-        public static void CopyDirectoryFlat(string sourceDir, string targetDir, string searchPattern, CopyMode copyMode = CopyMode.Overwrite)
+        public static void CopyDirectoryFlat(string sourceDir, string targetDir, string searchPattern, CopyMode copyMode = CopyMode.Overwrite, Func<string[], string[]>? mergeValidator = null)
         {
             // Получаем все файлы сразу, включая вложенные
             var files = Directory.GetFiles(sourceDir, searchPattern, SearchOption.AllDirectories);
@@ -622,45 +696,44 @@ namespace Cod4PackagedBuilder
                         break;
                     
                     case CopyMode.Merging:
-                        MergeFile(file, targetPath);
+                        MergeFile(file, targetPath, mergeValidator);
                         break;
                 }
             }
             
             Console.SetCursorPosition(0, Console.CursorTop);
-            //Console.Write(new string(' ', Console.WindowWidth));
-            //Console.SetCursorPosition(0, Console.CursorTop);
+            Console.Write(new string(' ', 50));
+            Console.SetCursorPosition(0, Console.CursorTop);
             Console.WriteLine($" Copied ({files.Length}) files to \"\\{targetDirName}\".");
         }
         
-        public static void MergeFile(string sourcePath, string targetPath)
+        public static void MergeFile(string sourcePath, string targetPath, Func<string[], string[]>? mergeValidator)
         {
-            // Just copy file if nothing to merge
-            if (!File.Exists(targetPath))
-            {
-                File.Copy(sourcePath, targetPath);
-                return;
-            }
+            // If there is not validation function
+            mergeValidator ??= _ => _;
             
             var allLines = new HashSet<string>();
             var uniqueLines = new List<string>();
 
-            // Read lines from target file
-            foreach (var line in File.ReadLines(targetPath))
+            if (File.Exists(targetPath))
             {
-                if (allLines.Add(line))
-                    uniqueLines.Add(line);
+                // Read lines from target file
+                foreach (var line in File.ReadLines(targetPath))
+                {
+                    if (allLines.Add(line))
+                        uniqueLines.Add(line);
+                }
+
+                uniqueLines.Add($"\n# -- merged from \"{sourcePath}\" -- #\n");
             }
 
-            uniqueLines.Add($"\n# -- merged from \"{sourcePath}\" -- #\n");
-            
             // Read lines from source file
-            foreach (var line in File.ReadLines(sourcePath))
+            foreach (var line in mergeValidator(File.ReadLines(sourcePath).ToArray()))
             {
                 if (allLines.Add(line))
                     uniqueLines.Add(line);
             }
-
+            
             // Write all combined lines
             File.WriteAllLines(targetPath, uniqueLines);
         }
@@ -672,6 +745,8 @@ namespace Cod4PackagedBuilder
         public string PackDir;
         public string ScriptName;
         public string IwdName;
+
+        public bool UseScriptsPacking;
     }
     
     public enum BuildMode
