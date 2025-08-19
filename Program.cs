@@ -288,17 +288,43 @@ namespace Cod4PackagedBuilder
                     BuildFastFile(_baseDir);
 
                     break;
+                
                 case BuildMode.PackagesOnly:
+                    
+                    LoadPackages();
+                    
+                    BuildPackagesIwd();
+                    
+                    PrepareFastFile(_baseDir, "Base");
+                    PreparePackagesFastFile();
+                    
+                    BuildFastFile(_baseDir);
+                    
                     break;
+                
                 case BuildMode.PackagesIwd:
+                    
+                    LoadPackages();
+                    
+                    BuildPackagesIwd();
+                    
                     break;
+                
                 case BuildMode.PackagesFastFile:
+                    
+                    LoadPackages();
+                    
+                    PrepareFastFile(_baseDir, "Base");
+                    PreparePackagesFastFile();
+                    
+                    BuildFastFile(_baseDir);
+                    
                     break;
-                case BuildMode.Length:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
             }
+            
+            Console.WriteLine(" Building configs...");
+            BuildConfig(_baseDir, "openwarfare");
+            BuildPackagesConfig();
             
             Console.WriteLine(" Mod built successfully.");
             Shutdown(BuildResult.Successful);
@@ -441,10 +467,10 @@ namespace Cod4PackagedBuilder
             CopyAssets(packDir, "vision", _toolsRawDir);
             CopyAssets(packDir, "xanim", _toolsRawDir);
             CopyAssets(packDir, "mp", _toolsRawDir);
-            
+            CopyAssets(packDir, Path.Combine("locals", _buildLang.ToString()), _toolsRawDir,_buildLang.ToString());
+
             // Move scripts data directly to release directory
             CopyAssets(packDir, "scriptdata", _releaseDir);
-            CopyAssets(packDir, Path.Combine("locals", _buildLang.ToString()), _toolsRawDir,_buildLang.ToString());
             
             // Move scripts (directly to release if scripts packing disabled)
             CopyAssets(packDir, "maps", scriptsTargetDir);
@@ -502,7 +528,35 @@ namespace Cod4PackagedBuilder
 
             CopyDir.CopyDirectoryFlat(assetsPath, Path.Combine(targetDir, assetsTargetDir), "*");
         }
-        
+
+        private static void BuildConfig(string packDir, string configName)
+        {
+            var configFileName = $"{configName}.cfg";
+
+            var configFilePath = Path.Combine(packDir, "configs", configFileName);
+
+            if (!File.Exists(configFilePath))
+            {
+                Console.WriteLine($" WARNING! Can't find config {configFilePath}");
+                return;
+            }
+            
+            // Move configs directly to release directory
+            CopyAssets(packDir, "configs", _releaseDir);
+            
+            File.AppendAllLines(Path.Combine(_releaseDir, "autoexec.cfg"), new []
+            {
+                $"exec configs\\{configFileName}"
+            });
+        }
+
+        private static void BuildPackagesConfig()
+        {
+            foreach (var packManifest in _packagesList.Where(pack => !string.IsNullOrEmpty(pack.ConfigName)))
+            {
+                BuildConfig(packManifest.PackDir, packManifest.ConfigName);
+            }
+        }
         
         private static void Shutdown(BuildResult result, string description = "")
         {
@@ -565,8 +619,7 @@ namespace Cod4PackagedBuilder
                 };
 
                 if (!TryGetPackConfigValue(packConfig, "name", out packManifest.PackName) ||
-                    !TryGetPackConfigValue(packConfig, "iwd", out packManifest.IwdName) ||
-                    !TryGetPackConfigValue(packConfig, "gsc", out packManifest.ScriptName ))
+                    !TryGetPackConfigValue(packConfig, "iwd", out packManifest.IwdName))
                 {
                     Shutdown(BuildResult.PackageConfigWrongFormat);
                     return;
@@ -576,7 +629,10 @@ namespace Cod4PackagedBuilder
                 {
                     bool.TryParse(useScriptsPackingValue, out packManifest.UseScriptsPacking);
                 }
-                
+
+                TryGetPackConfigValue(packConfig, "gsc", out packManifest.ScriptName);
+                TryGetPackConfigValue(packConfig, "cfg", out packManifest.ConfigName);
+
                 loadedPackagesList.Add(packManifest);
             }
 
@@ -745,6 +801,7 @@ namespace Cod4PackagedBuilder
         public string PackDir;
         public string ScriptName;
         public string IwdName;
+        public string ConfigName;
 
         public bool UseScriptsPacking;
     }
