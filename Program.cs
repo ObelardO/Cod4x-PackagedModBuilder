@@ -81,7 +81,7 @@ namespace Cod4PackagedBuilder
             }
 
             _baseDir = Path.Combine(_workDir, "_Base");
-            _releaseDir = Path.Combine(_workDir, "_Release");
+            _releaseDir = Path.Combine(_workDir, "Release");
             
             _toolsRawDir = Path.Combine(_toolsDir, "raw");
             _toolsZoneDir = Path.Combine(_toolsDir, "zone");
@@ -444,7 +444,7 @@ namespace Cod4PackagedBuilder
             
             // Move scripts data directly to release directory
             CopyAssets(packDir, "scriptdata", _releaseDir);
-            CopyAssets(packDir, Path.Combine("locals", _buildLang.ToString(), _buildLang.ToString()), _toolsRawDir);
+            CopyAssets(packDir, Path.Combine("locals", _buildLang.ToString()), _toolsRawDir,_buildLang.ToString());
             
             // Move scripts (directly to release if scripts packing disabled)
             CopyAssets(packDir, "maps", scriptsTargetDir);
