@@ -324,7 +324,7 @@ namespace Cod4PackagedBuilder
             
             Console.WriteLine(" Building configs...");
             BuildConfig(_baseDir, "openwarfare");
-            BuildPackagesConfig();
+             BuildPackagesConfig();
             
             Console.WriteLine(" Mod built successfully.");
             Shutdown(BuildResult.Successful);
@@ -464,6 +464,8 @@ namespace Cod4PackagedBuilder
             CopyAssets(packDir, "xmodelsurfs", _toolsRawDir);
             CopyAssets(packDir, "fx", _toolsRawDir);
             CopyAssets(packDir, "materials", _toolsRawDir);
+            CopyAssets(packDir, "material_properties", _toolsRawDir);
+            CopyAssets(packDir, "images", _toolsRawDir);
             CopyAssets(packDir, "vision", _toolsRawDir);
             CopyAssets(packDir, "xanim", _toolsRawDir);
             CopyAssets(packDir, "mp", _toolsRawDir);
